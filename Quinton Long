@@ -1,0 +1,59 @@
+set.seed(42)
+n_simulations <- 1000000
+
+simulate_wilkinson_test <- function(log_mean, n_samples, window_width, max_error) {
+  half_window  <- window_width / 2.0
+  lower_bound  <- log_mean - half_window
+  upper_bound  <- log_mean + half_window
+  error_sd     <- max_error / 2.0
+  expected_random_mean <- half_window / 2.0
+  
+  p_values <- numeric(n_simulations)
+  total_points_generated <- 0
+  
+  for (i in 1:n_simulations) { 
+    observed_points <- c() # name of variable where data will be stored. c() is the combine function. 
+    
+    # This continues generating perfect cycles with error until we have enough inside the bin
+    while (length(observed_points) < n_samples) {
+      # Continue generating a perfect Milankovitch cycle with Gaussian dating error
+      candidate <- rnorm(1, mean = log_mean, sd = error_sd) # 1 tells R to make one value at a time that centers around the log_mean with sd = error_sd. candidate is the variable used for this.
+      total_points_generated <- total_points_generated + 1 # every time a point is generated, this will add one to the total_points_generated value when it loops through this code. We need this to determine our percent discarded at the end. 
+      
+      # Only keep the cycle if it lands inside the bin boundaries
+      if (candidate >= lower_bound && candidate <= upper_bound) { # && means that both conditions must be true for it to be continued
+        observed_points <- c(observed_points, candidate) # if previous statement is yes, this code will continue onward and save the point as an official observed_point. The combined tool takes the new candidate and combines it onto the end of the observed_points list.
+      }
+    }
+    
+    # Calculate absolute distance from the Milankovitch midpoint
+    distances <- abs(observed_points - log_mean)
+    
+    # Run the one-sample t-test
+    test <- t.test(distances, mu = expected_random_mean, alternative = "less")
+    p_values[i] <- test$p.value
+  }
+  
+  # Calculate Statistical Power (how often p < 0.05)
+  power <- mean(p_values < 0.05)
+  
+  # Discard Rate = (Total Generated - Total Kept) / Total Generated
+  total_samples_kept <- n_samples * n_simulations 
+  discard_rate <- (total_points_generated - total_samples_kept) / total_points_generated # code that generates the percent discarded rate
+  
+  return(list(power = power, discard_rate = discard_rate))
+}
+
+# Run the simulations for all four periods
+cat("Running Monte Carlo simulations (1,000,000 iterations per period)...\n\n")
+results_4.32 <- simulate_wilkinson_test(4.32, 18, 0.4, 0.3) # plugs these values into the simulated_wilkinson_test at the beginning of the code
+results_4.61 <- simulate_wilkinson_test(4.61, 23, 0.4, 0.3)
+results_5.00 <- simulate_wilkinson_test(5.00, 27, 0.4, 0.3)
+results_5.62 <- simulate_wilkinson_test(5.62, 71, 0.8, 0.3)
+
+
+# printed results
+cat(sprintf("  4.32 (Precession)  |     18      |         %5.2f%%         |   %5.2f%%   \n", results_4.32$discard_rate * 100, results_4.32$power * 100))
+cat(sprintf("  4.61 (Obliquity)   |     23      |         %5.2f%%         |   %5.2f%%   \n", results_4.61$discard_rate * 100, results_4.61$power * 100))
+cat(sprintf("  5.00 (Eccentricity)|     27      |         %5.2f%%         |   %5.2f%%   \n", results_5.00$discard_rate * 100, results_5.00$power * 100))
+cat(sprintf("  5.62 (Extended Ecc)|     71      |         %5.2f%%         |   %5.2f%%   \n", results_5.62$discard_rate * 100, results_5.62$power * 100))
