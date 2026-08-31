@@ -1,0 +1,77 @@
+set.seed(42)
+n_simulations <- 100000 
+
+# Added 'natural_sd' to represent orbital and geological noise
+simulate_wilkinson_test_with_noise <- function(log_mean, n_samples, window_width, max_error, natural_sd) {
+  half_window <- window_width / 2.0
+  lower_bound <- log_mean - half_window
+  upper_bound <- log_mean + half_window
+  
+  # Dating error standard deviation (from Algeo and Wilkinson's factor of 2)
+  error_sd <- max_error / 2.0 
+  expected_random_mean <- half_window / 2.0
+  
+  p_values <- numeric(n_simulations)
+  total_points_generated <- 0
+  
+  for (i in 1:n_simulations) {
+    observed_points <- numeric(0) 
+    
+    # Generates cycles with natural noise AND dating error until we fill the bin
+    while (length(observed_points) < n_samples) {
+      
+      # STEP 1: Nature generates the cycle with inherent wobble (orbital drift + episodic sedimentation)
+      true_natural_cycle <- rnorm(1, mean = log_mean, sd = natural_sd)
+      
+      # STEP 2: Geologists measure the cycle, introducing dating/estimation error
+      candidate <- rnorm(1, mean = true_natural_cycle, sd = error_sd)
+      
+      total_points_generated <- total_points_generated + 1
+      
+      # Only keep the cycle if it lands inside the strict bin boundaries
+      if (candidate >= lower_bound && candidate <= upper_bound) {
+        observed_points <- c(observed_points, candidate) 
+      }
+    }
+    
+    # Calculate absolute distance from the Milankovitch midpoint
+    distances <- abs(observed_points - log_mean)
+    
+    # Run the one-sample t-test
+    test <- t.test(distances, mu = expected_random_mean, alternative = "less")
+    p_values[i] <- test$p.value
+  }
+  
+  # Calculate Statistical Power (how often p < 0.05)
+  power <- mean(p_values < 0.05)
+  
+  # Discard Rate = (Total Generated - Total Kept) / Total Generated
+  total_samples_kept <- n_samples * n_simulations
+  discard_rate <- (total_points_generated - total_samples_kept) / total_points_generated
+  
+  return(list(power = power, discard_rate = discard_rate))
+}
+
+cat("Running Monte Carlo simulations with Natural Variance (1,000,000 iterations)...\n\n")
+
+# 1. Precession: High noise (orbital drift + sedimentary noise) ~ 0.04 sd
+results_4.32_noise <- simulate_wilkinson_test_with_noise(4.32, 18, 0.4, 0.3, 0.04)
+
+# 2. Obliquity: High noise (orbital drift + sedimentary noise) ~ 0.04 sd
+results_4.61_noise <- simulate_wilkinson_test_with_noise(4.61, 23, 0.4, 0.3, 0.04)
+
+# 3. Eccentricity: Low noise (stable orbit, just sedimentary noise) ~ 0.015 sd
+results_5.00_noise <- simulate_wilkinson_test_with_noise(5.00, 27, 0.4, 0.3, 0.015)
+
+# 4. Extended Eccentricity: Low noise (stable orbit, just sedimentary noise) ~ 0.015 sd
+results_5.62_noise <- simulate_wilkinson_test_with_noise(5.62, 71, 0.8, 0.3, 0.015)
+
+# Outputting the results
+cat(sprintf(" 4.32 (Precession)   | 18 | Discarded: %5.2f%% | Power: %5.2f%% \n", 
+            results_4.32_noise$discard_rate * 100, results_4.32_noise$power * 100))
+cat(sprintf(" 4.61 (Obliquity)    | 23 | Discarded: %5.2f%% | Power: %5.2f%% \n", 
+            results_4.61_noise$discard_rate * 100, results_4.61_noise$power * 100))
+cat(sprintf(" 5.00 (Eccentricity) | 27 | Discarded: %5.2f%% | Power: %5.2f%% \n", 
+            results_5.00_noise$discard_rate * 100, results_5.00_noise$power * 100))
+cat(sprintf(" 5.62 (Extended Ecc) | 71 | Discarded: %5.2f%% | Power: %5.2f%% \n", 
+            results_5.62_noise$discard_rate * 100, results_5.62_noise$power * 100))
